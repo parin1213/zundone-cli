@@ -1,55 +1,54 @@
 # zundone-cli
 
-Small CLI for speaking text through a VOICEVOX engine.
+VOICEVOX エンジン経由でテキストを読み上げる小さな CLI です。
 
-The CLI is no longer tied to a macOS app install. It talks to a VOICEVOX HTTP API and can:
+English README: [README.en.md](./README.en.md)
 
-- connect to an already running engine
-- start a local Docker-based engine
-- save synthesized audio as WAV
-- optionally play the generated audio with a system player
+この CLI は macOS の `VOICEVOX.app` 前提ではありません。HTTP で VOICEVOX API を叩き、必要なら Docker でローカル engine を起動できます。
 
-## Requirements
+## できること
+
+- 既に起動している VOICEVOX engine に接続する
+- Docker ベースのローカル engine を起動する
+- 合成した音声を WAV として保存する
+- OS ごとのプレイヤーで音声を再生する
+
+## 必要なもの
 
 - Node.js 20+
-- One of:
-  - a reachable VOICEVOX engine URL
-  - Docker, if you want `zundone` to manage the engine for you
+- 以下のどちらか
+  - 到達可能な VOICEVOX engine URL
+  - `zundone engine up` を使うなら Docker
 
-## Install
-
-Run locally:
+## 開発時の使い方
 
 ```bash
-node ./zundone.mjs "done"
+pnpm dev -- "done"
+pnpm build
+pnpm test
+pnpm typecheck
 ```
 
-Install globally:
+生成されるエントリポイントは `dist/cli.js` です。
 
-```bash
-npm install -g .
-```
+## 技術構成
 
-or:
+- `src/`: 人が編集する TypeScript ソース
+- `dist/`: `tsup` が生成する配布用ビルド
+- `cac`: command / option / help の定義
+- `vitest`: テスト
+- `.mise.toml`: Node / pnpm のローカル固定
 
-```bash
-pnpm link --global
-```
+## backend
 
-The package exposes both `zundone` and `zd`.
+- `docker`
+  - 既定値
+  - engine に繋がらない場合、Docker container を作成または起動できる
+- `http`
+  - 指定 URL に対してのみ通信する
+  - Docker の自動起動はしない
 
-## Backends
-
-`zundone` supports two backend modes.
-
-- `docker`:
-  - default mode
-  - if the engine is not reachable, `zundone` can create or start a local Docker container
-- `http`:
-  - only talks to the configured URL
-  - never tries to start Docker automatically
-
-Environment variables:
+主な環境変数:
 
 - `ZUNDONE_BACKEND=docker|http`
 - `VOICEVOX_URL`
@@ -57,9 +56,9 @@ Environment variables:
 - `ZUNDONE_DOCKER_IMAGE`
 - `ZUNDONE_DOCKER_PORT`
 
-If `VOICEVOX_URL` is not set, the default URL is `http://127.0.0.1:$ZUNDONE_DOCKER_PORT` and falls back to port `50021`.
+`VOICEVOX_URL` 未指定時は `http://127.0.0.1:$ZUNDONE_DOCKER_PORT` を使い、未指定なら `50021` です。
 
-## Usage
+## 使い方
 
 ```bash
 zundone [options] [text...]
@@ -72,35 +71,35 @@ zundone engine down
 zundone cache-info
 ```
 
-## Examples
+## 例
 
-Use a local Docker-managed engine:
+Docker 管理の engine を使う:
 
 ```bash
 zundone engine up
 zundone "done"
 ```
 
-Use an existing remote or local HTTP engine:
+既存の HTTP engine を使う:
 
 ```bash
 ZUNDONE_BACKEND=http zundone -u http://127.0.0.1:50021 "done"
-ZUNDONE_BACKEND=http zundone -u http://remote-host:50021 "done"
 ```
 
-Save audio without playing it:
+PowerShell:
+
+```powershell
+$env:ZUNDONE_BACKEND = "http"
+zundone -u http://127.0.0.1:50021 "done"
+```
+
+保存だけして再生しない:
 
 ```bash
 zundone --no-play --output done.wav "done"
 ```
 
-Warm the cache for `--done` phrases:
-
-```bash
-zundone --prewarm-done
-```
-
-## Engine commands
+## engine コマンド
 
 ```bash
 zundone engine status
@@ -109,57 +108,37 @@ zundone engine down
 zundone engine logs
 ```
 
-`engine up` creates the Docker container if it does not exist yet.
+`engine up` は container が無ければ作成します。
 
-## Audio playback
+## 再生
 
-Playback is best-effort and depends on what is available on the current OS.
+再生は OS ごとの利用可能コマンドに依存します。
 
-- macOS: `afplay`, then `paplay`, `play`, `ffplay`
+- macOS: `afplay`, `paplay`, `play`, `ffplay`
 - Linux: `paplay`, `aplay`, `play`, `ffplay`
 - Windows: PowerShell `Media.SoundPlayer`
 
-Override the player manually with:
+手動指定:
 
 - `ZUNDONE_PLAYER`
 - `ZUNDONE_PLAYER_ARGS`
 
-If you do not want playback, use `--no-play`.
+再生が不要なら `--no-play` を使います。
 
-## Options
+## キャッシュ
 
-- `-v, --voice <id|name>`: speaker ID or name
-- `-r, --rate <float>`: speed scale
-- `-p, --pitch <float>`: pitch scale
-- `--volume <float>`: volume scale
-- `--intonation <float>`: intonation scale
-- `-o, --output <path>`: write a WAV file
-- `--no-play`: do not play audio
-- `-u, --url <url>`: VOICEVOX engine URL
-- `-l, --list`: list speakers
-- `-q, --quiet`: suppress extra logs
-- `--done`: speak a random completion phrase
-- `--prewarm-done`: synthesize and cache all completion phrases
-- `--no-cache`: disable cache reads and writes
-- `--clear-cache`: remove cached files and exit
-- `--cache-info`: print cache information and exit
-- `--no-autolaunch`: disable Docker auto-start behavior
-- `-h, --help`: show help
+既定では `env-paths("zundone")` の OS 標準 cache ディレクトリを使います。
 
-## Cache
+- macOS: `~/Library/Caches/zundone`
+- Linux: `~/.cache/zundone`
+- Windows: `%LOCALAPPDATA%\zundone\Cache`
 
-By default, cache files are stored under:
-
-```text
-~/.cache/zundone
-```
-
-Override or disable with:
+上書きや無効化:
 
 - `ZUNDONE_CACHE_DIR`
 - `ZUNDONE_NO_CACHE=1`
 
-## Notes
+## 補足
 
-- `.wav`, `.env*`, and log files are ignored by `.gitignore`
-- `engine up` expects the configured URL port and Docker published port to match
+- `dist/` は生成物です。編集は `src/` 側で行います
+- `engine up` は Docker 公開ポートと `VOICEVOX_URL` のポート一致を前提にしています
