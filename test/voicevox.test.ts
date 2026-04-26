@@ -3,8 +3,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readConfig } from "../src/config.js";
-import { NORMAL_STYLE_NAME } from "../src/constants.js";
 import { probeVersion, VoicevoxClient } from "../src/voicevox.js";
+
+const NORMAL_STYLE_NAME = "ノーマル";
 
 const wavPayload = Buffer.from(
   "524946462400000057415645666d74201000000001000100401f0000803e0000020010006461746100000000",

@@ -58,7 +58,8 @@ function writeStderr(line: string): void {
 }
 
 function pickDonePhrase(): string {
-  return DONE_PHRASES[Math.floor(Math.random() * DONE_PHRASES.length)] ?? "終わったのだ。";
+  const index = Math.floor(Math.random() * DONE_PHRASES.length);
+  return DONE_PHRASES[index]!;
 }
 
 async function readStdin(): Promise<string> {
@@ -77,6 +78,22 @@ function parseFloatOption(rawValue: string | undefined, label: string): number |
     throw new Error(`${label} must be a number (got: ${rawValue})`);
   }
   return value;
+}
+
+type SpeechModifiers = {
+  rate?: number;
+  pitch?: number;
+  volume?: number;
+  intonation?: number;
+};
+
+function parseSpeechModifiers(options: SpeechOptions): SpeechModifiers {
+  return {
+    rate: parseFloatOption(options.rate, "--rate"),
+    pitch: parseFloatOption(options.pitch, "--pitch"),
+    volume: parseFloatOption(options.volume, "--volume"),
+    intonation: parseFloatOption(options.intonation, "--intonation"),
+  };
 }
 
 function resolveBaseUrl(config: AppConfig, url?: string): string {
@@ -258,23 +275,20 @@ async function handleSpeechCommand(
   }
 
   if (options.prewarmDone) {
-    const rate = parseFloatOption(options.rate, "--rate");
-    const pitch = parseFloatOption(options.pitch, "--pitch");
-    const volume = parseFloatOption(options.volume, "--volume");
-    const intonation = parseFloatOption(options.intonation, "--intonation");
+    const modifiers = parseSpeechModifiers(options);
     const speakerId = await client.resolveSpeakerId(options.voice ?? config.defaultSpeaker);
 
     let synthesized = 0;
     let cacheHits = 0;
 
     for (const phrase of DONE_PHRASES) {
-      const key = cache.buildKey({ text: phrase, speakerId, rate, pitch, volume, intonation });
+      const key = cache.buildKey({ text: phrase, speakerId, ...modifiers });
       if (await cache.lookup(key)) {
         cacheHits += 1;
         continue;
       }
 
-      const wav = await client.synthesize({ text: phrase, speakerId, rate, pitch, volume, intonation });
+      const wav = await client.synthesize({ text: phrase, speakerId, ...modifiers });
       await cache.store(key, wav);
       synthesized += 1;
 
@@ -297,14 +311,11 @@ async function handleSpeechCommand(
     writeStderr(text);
   }
 
-  const rate = parseFloatOption(options.rate, "--rate");
-  const pitch = parseFloatOption(options.pitch, "--pitch");
-  const volume = parseFloatOption(options.volume, "--volume");
-  const intonation = parseFloatOption(options.intonation, "--intonation");
+  const modifiers = parseSpeechModifiers(options);
   const speakerId = await client.resolveSpeakerId(options.voice ?? config.defaultSpeaker);
 
   const cacheDisabled = options.cache === false || config.noCache;
-  const cacheKey = cache.buildKey({ text, speakerId, rate, pitch, volume, intonation });
+  const cacheKey = cache.buildKey({ text, speakerId, ...modifiers });
   const cachedPath = cacheDisabled ? null : await cache.lookup(cacheKey);
 
   let playPath: string | undefined;
@@ -319,7 +330,7 @@ async function handleSpeechCommand(
       if (!options.quiet) writeStderr(`saved: ${options.output}`);
     }
   } else {
-    const wav = await client.synthesize({ text, speakerId, rate, pitch, volume, intonation });
+    const wav = await client.synthesize({ text, speakerId, ...modifiers });
 
     if (!cacheDisabled) {
       try {

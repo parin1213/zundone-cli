@@ -1,7 +1,9 @@
 import type { AppConfig } from "./config.js";
-import { NORMAL_STYLE_NAME, KNOWN_SPEAKERS } from "./constants.js";
+import { KNOWN_SPEAKERS } from "./constants.js";
 import { dockerEnsureRunning } from "./docker.js";
-import { EngineDownError, getErrorMessage } from "./errors.js";
+import { EngineDownError, getErrorCode, getErrorMessage } from "./errors.js";
+
+const NORMAL_STYLE_NAME = "ノーマル";
 
 export type SpeakerStyle = {
   id: number;
@@ -34,17 +36,9 @@ type VoicevoxClientOptions = {
   autostartQuiet: boolean;
 };
 
-function errorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("cause" in error)) return undefined;
-  const cause = (error as { cause?: unknown }).cause;
-  if (typeof cause !== "object" || cause === null || !("code" in cause)) return undefined;
-  const code = (cause as { code?: unknown }).code;
-  return typeof code === "string" ? code : undefined;
-}
-
 function isConnectionRefused(error: unknown): boolean {
   const message = getErrorMessage(error);
-  return errorCode(error) === "ECONNREFUSED" || /ECONNREFUSED|fetch failed/i.test(message);
+  return getErrorCode(error) === "ECONNREFUSED" || /ECONNREFUSED|fetch failed/i.test(message);
 }
 
 export async function probeVersion(baseUrl: string): Promise<VersionProbeResult> {
@@ -60,7 +54,7 @@ export async function probeVersion(baseUrl: string): Promise<VersionProbeResult>
     const text = (await response.text()).trim().replace(/^"|"$/g, "");
     return { ok: true, version: text || "unknown" };
   } catch (error) {
-    return { ok: false, error: errorCode(error) ?? getErrorMessage(error) };
+    return { ok: false, error: getErrorCode(error) ?? getErrorMessage(error) };
   }
 }
 

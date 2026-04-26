@@ -25,5 +25,3 @@ export const KNOWN_SPEAKERS: Record<string, number> = {
   "冥鳴ひまり": 14,
   "九州そら": 16,
 };
-
-export const NORMAL_STYLE_NAME = "ノーマル";

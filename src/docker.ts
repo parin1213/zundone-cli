@@ -1,7 +1,7 @@
 import type { AppConfig } from "./config.js";
 import { execa } from "execa";
 
-import { getErrorMessage } from "./errors.js";
+import { getErrorCode, getErrorMessage } from "./errors.js";
 
 export type DockerContainerStatus = {
   available: boolean;
@@ -81,13 +81,12 @@ async function runDocker(args: string[]): Promise<CommandResult> {
       missing: false,
     };
   } catch (error) {
-    const code = typeof error === "object" && error && "code" in error ? error.code : undefined;
     return {
       ok: false,
       code: -1,
       stdout: "",
       stderr: getErrorMessage(error),
-      missing: code === "ENOENT",
+      missing: getErrorCode(error) === "ENOENT",
     };
   }
 }

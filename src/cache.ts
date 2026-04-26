@@ -3,6 +3,8 @@ import { constants as fsConstants } from "node:fs";
 import { access, mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { getErrorCode } from "./errors.js";
+
 export type CacheKeyInput = {
   text: string;
   speakerId: number;
@@ -33,7 +35,8 @@ export class WavCache {
   buildKey(input: CacheKeyInput): string {
     const payload = JSON.stringify({
       v: 1,
-      ...input,
+      text: input.text,
+      speakerId: input.speakerId,
       rate: input.rate ?? null,
       pitch: input.pitch ?? null,
       volume: input.volume ?? null,
@@ -81,8 +84,7 @@ export class WavCache {
         }
       }
     } catch (error) {
-      const code = typeof error === "object" && error && "code" in error ? error.code : undefined;
-      if (code !== "ENOENT") throw error;
+      if (getErrorCode(error) !== "ENOENT") throw error;
     }
 
     return { removed, bytes };
@@ -104,8 +106,7 @@ export class WavCache {
         }
       }
     } catch (error) {
-      const code = typeof error === "object" && error && "code" in error ? error.code : undefined;
-      if (code !== "ENOENT") throw error;
+      if (getErrorCode(error) !== "ENOENT") throw error;
     }
 
     return { dir: this.cacheDir, count, bytes };
