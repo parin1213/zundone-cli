@@ -7,12 +7,25 @@ import { tmpdir, homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes, createHash } from 'node:crypto';
 
-const DEFAULT_URL = process.env.VOICEVOX_URL || 'http://127.0.0.1:50021';
-const DEFAULT_SPEAKER = process.env.ZUNDONE_SPEAKER || '3'; // ずんだもん(ノーマル)
+const DEFAULT_URL = process.env.VOICEVOX_URL || `http://127.0.0.1:${process.env.ZUNDONE_DOCKER_PORT || 50021}`;
+const DEFAULT_SPEAKER = process.env.ZUNDONE_SPEAKER || '3';
 const CACHE_DIR = process.env.ZUNDONE_CACHE_DIR
   || join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'zundone');
 
-// --done で使う、ずんだもん口調のランダム完了フレーズ
+const DOCKER_CONTAINER = process.env.ZUNDONE_DOCKER_CONTAINER || 'voicevox';
+const DOCKER_PORT = Number(process.env.ZUNDONE_DOCKER_PORT || 50021);
+const DOCKER_IMAGE = process.env.ZUNDONE_DOCKER_IMAGE
+  || (process.arch === 'arm64'
+    ? 'voicevox/voicevox_engine:cpu-arm64-latest'
+    : 'voicevox/voicevox_engine:cpu-latest');
+
+// docker | http
+const BACKEND = (() => {
+  const v = (process.env.ZUNDONE_BACKEND || 'docker').toLowerCase();
+  if (v === 'docker' || v === 'http') return v;
+  throw new Error(`ZUNDONE_BACKEND は docker または http なのだ (受け取った値: ${v})`);
+})();
+
 const DONE_PHRASES = [
   '完了したのだ！',
   '終わったのだ〜！',
@@ -38,7 +51,6 @@ function pickDonePhrase() {
   return DONE_PHRASES[Math.floor(Math.random() * DONE_PHRASES.length)];
 }
 
-// よく使う話者のショートカット（/speakers を叩かずに解決するため）
 const KNOWN_SPEAKERS = {
   'ずんだもん': 3,
   'zundamon': 3,
@@ -56,13 +68,13 @@ const KNOWN_SPEAKERS = {
 };
 
 function printHelp() {
-  process.stdout.write(`zundone — VOICEVOXずんだもんで喋るCLIなのだ
+  process.stdout.write(`zundone — VOICEVOXで喋るCLI (Docker/HTTP backend, cross-platform)
 
 使い方:
   zundone [オプション] [テキスト...]
   zundone --done                 # ランダムに完了フレーズを再生
   echo "テキスト" | zundone
-  zundone help | list | clear-cache | cache-path
+  zundone help | list | engine | clear-cache | cache-path
 
 主なオプション:
   -v, --voice <id|name>     話者 (既定: ずんだもん, env: ZUNDONE_SPEAKER)
@@ -88,41 +100,53 @@ function printHelp() {
   保存先: ${CACHE_DIR}
   env: ZUNDONE_CACHE_DIR / ZUNDONE_NO_CACHE=1 で無効化
 
-自動起動:
-      --no-autolaunch       engine未起動時にVOICEVOX.appを自動起動しない
-  既定: engine接続失敗時に \`open -a VOICEVOX\` で起動・最大30秒待機
-  env: ZUNDONE_NO_AUTOLAUNCH=1 で無効化
+バックエンド:
+  ZUNDONE_BACKEND=docker (既定)  接続失敗時にdocker containerを検知/起動
+  ZUNDONE_BACKEND=http           HTTP接続のみ。autolaunchしない (リモートengine等)
+      --no-autolaunch            backend=docker でも autolaunch 無効化
+  env: ZUNDONE_DOCKER_CONTAINER (既定: ${DOCKER_CONTAINER})
+       ZUNDONE_DOCKER_IMAGE     (既定: ${DOCKER_IMAGE})
+       ZUNDONE_DOCKER_PORT      (既定: ${DOCKER_PORT})
+       ZUNDONE_NO_AUTOLAUNCH=1
 
-サブコマンド (最初の引数で指定):
+engineサブコマンド (docker container 管理):
+  zundone engine status   # backend/HTTP/再生コマンドの状態確認
+  zundone engine up       # docker container 起動 (無ければ作成)
+  zundone engine down     # docker container 停止
+  zundone engine logs     # docker logs --tail 100
+
+再生コマンド (自動検出):
+  macOS: afplay → paplay → play → ffplay
+  Linux: paplay → aplay → play → ffplay
+  Windows: PowerShell Media.SoundPlayer
+  env: ZUNDONE_PLAYER=<bin> で明示指定 / ZUNDONE_PLAYER_ARGS=<空白区切り>
+
+サブコマンド:
   help          このヘルプを表示
   list          話者一覧を表示 ( --list と同等 )
+  engine ...    engine管理 (上記参照)
   clear-cache   キャッシュ全削除
   cache-info    キャッシュ情報表示
   cache-path    キャッシュディレクトリのパスのみ出力
 
-環境変数:
-  VOICEVOX_URL        engine URL
-  ZUNDONE_SPEAKER     既定話者
-  ZUNDONE_CACHE_DIR   キャッシュ先
-  ZUNDONE_NO_CACHE=1  キャッシュ常時無効
-
 例:
-  zundone "完了したのだ"                      # 既定(ずんだもん) で再生 + キャッシュ
+  zundone "完了したのだ"                       # 既定(ずんだもん) で再生 + キャッシュ
   zundone -r 1.3 "早口ずんだもん"
   zundone -v 四国めたん "めたん登場"
   zundone -o done.wav --no-play "保存のみ"
   zundone --no-cache "毎回合成したい"
   echo "標準入力も読めるのだ" | zundone
-  zundone clear-cache
+  ZUNDONE_BACKEND=http zundone -u http://remote:50021 "リモートengineを使う"
+  zundone engine up && zundone "セットアップ完了なのだ"
 
-VOICEVOX engine の起動 (未起動時):
-  docker run -d --restart unless-stopped --name voicevox \\
-    -p 50021:50021 voicevox/voicevox_engine:cpu-latest
+VOICEVOX engine の手動起動 (Docker):
+  docker run -d --restart unless-stopped --name ${DOCKER_CONTAINER} \\
+    -p ${DOCKER_PORT}:50021 ${DOCKER_IMAGE}
 `);
 }
 
 let autolaunchTried = false;
-let autolaunchAllowed = true; // main() で --no-autolaunch によって false になる
+let autolaunchAllowed = true;
 let autolaunchQuiet = false;
 
 async function fetchRaw(url, init) {
@@ -145,41 +169,123 @@ async function fetchRaw(url, init) {
   return res;
 }
 
-async function tryAutolaunch(anyUrl) {
-  if (!autolaunchQuiet) process.stderr.write('VOICEVOX 起動中なのだ…\n');
-  // -g: 前面に出さない / -j: 隠して起動 (Electronだと無視されるので後でSystem Events経由でも隠す)
-  spawn('open', ['-gj', '-a', 'VOICEVOX'], { stdio: 'ignore', detached: true }).unref();
+function spawnCapture(cmd, args, opts = {}) {
+  return new Promise(resolve => {
+    let p;
+    try {
+      p = spawn(cmd, args, opts);
+    } catch (e) {
+      resolve({ ok: false, code: -1, stdout: '', stderr: e.message, missing: true });
+      return;
+    }
+    let stdout = '', stderr = '';
+    p.stdout?.on('data', d => stdout += d);
+    p.stderr?.on('data', d => stderr += d);
+    p.on('error', e => {
+      const missing = e.code === 'ENOENT';
+      resolve({ ok: false, code: -1, stdout, stderr: stderr || e.message, missing });
+    });
+    p.on('exit', code => resolve({ ok: code === 0, code, stdout, stderr }));
+  });
+}
+
+async function waitForEngine(anyUrl, timeoutMs = 30000) {
   const origin = new URL(anyUrl).origin;
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 1000));
     try {
       const r = await fetch(`${origin}/version`);
-      if (r.ok) {
-        if (!autolaunchQuiet) process.stderr.write('起動したのだ\n');
-        hideVoicevoxWindow();
-        return;
-      }
+      if (r.ok) return true;
     } catch {}
   }
-  const err = new Error(`VOICEVOX 起動を試みたがタイムアウトしたのだ (${origin})`);
-  err.engineDown = true;
-  throw err;
+  return false;
 }
 
-function hideVoicevoxWindow() {
-  // ウィンドウが復元されてしまう場合があるので、短いディレイ後にもう一度隠す
-  const script = `
-    repeat 5 times
-      try
-        tell application "System Events"
-          if exists (process "VOICEVOX") then set visible of process "VOICEVOX" to false
-        end tell
-      end try
-      delay 0.5
-    end repeat
-  `;
-  spawn('osascript', ['-e', script], { stdio: 'ignore', detached: true }).unref();
+async function dockerContainerStatus() {
+  const r = await spawnCapture('docker', [
+    'ps', '-a',
+    '--filter', `name=^${DOCKER_CONTAINER}$`,
+    '--format', '{{.State}}',
+  ]);
+  if (r.missing) return { available: false };
+  if (!r.ok) return { available: true, error: r.stderr.trim() };
+  const state = r.stdout.trim().split('\n')[0] || '';
+  if (!state) return { available: true, exists: false };
+  return { available: true, exists: true, running: state === 'running', state };
+}
+
+function hostPortFromUrl(anyUrl) {
+  const url = new URL(anyUrl);
+  if (url.port) return Number(url.port);
+  return url.protocol === 'https:' ? 443 : 80;
+}
+
+async function dockerPublishedPort() {
+  const r = await spawnCapture('docker', [
+    'inspect',
+    '--format',
+    '{{with index .NetworkSettings.Ports "50021/tcp"}}{{(index . 0).HostPort}}{{end}}',
+    DOCKER_CONTAINER,
+  ]);
+  if (!r.ok) return null;
+  const port = r.stdout.trim();
+  return port ? Number(port) : null;
+}
+
+async function dockerEnsureRunning(anyUrl, { autoCreate, quiet }) {
+  const desiredPort = hostPortFromUrl(anyUrl);
+  const status = await dockerContainerStatus();
+  if (!status.available) {
+    return { ok: false, reason: 'docker コマンドが見つからないのだ' };
+  }
+  if (status.error) {
+    return { ok: false, reason: `docker 状態取得失敗: ${status.error}` };
+  }
+  if (status.exists) {
+    const publishedPort = await dockerPublishedPort();
+    if (publishedPort && publishedPort !== desiredPort) {
+      return {
+        ok: false,
+        reason: `container "${DOCKER_CONTAINER}" is published on host port ${publishedPort}, but the current URL expects ${desiredPort}. Align VOICEVOX_URL / ZUNDONE_DOCKER_PORT or recreate the container.`,
+      };
+    }
+  }
+  if (!status.exists) {
+    if (!autoCreate) return { ok: false, reason: `container "${DOCKER_CONTAINER}" が無いのだ (zd engine up で作成)` };
+    if (!quiet) process.stderr.write(`docker container "${DOCKER_CONTAINER}" を作成するのだ (image: ${DOCKER_IMAGE})…\n`);
+    const r = await spawnCapture('docker', [
+      'run', '-d', '--restart', 'unless-stopped',
+      '--name', DOCKER_CONTAINER,
+      '-p', `${desiredPort}:50021`,
+      DOCKER_IMAGE,
+    ]);
+    if (!r.ok) return { ok: false, reason: `docker run 失敗: ${r.stderr.trim()}` };
+  } else if (!status.running) {
+    if (!quiet) process.stderr.write(`docker container "${DOCKER_CONTAINER}" を起動するのだ…\n`);
+    const r = await spawnCapture('docker', ['start', DOCKER_CONTAINER]);
+    if (!r.ok) return { ok: false, reason: `docker start 失敗: ${r.stderr.trim()}` };
+  }
+  const ready = await waitForEngine(anyUrl, 60000);
+  if (!ready) return { ok: false, reason: 'engine 接続確認タイムアウトなのだ' };
+  return { ok: true };
+}
+
+async function tryAutolaunch(anyUrl) {
+  if (BACKEND !== 'docker') {
+    const err = new Error(
+      `VOICEVOX engine に接続できないのだ (backend=${BACKEND}, url=${anyUrl})`
+    );
+    err.engineDown = true;
+    throw err;
+  }
+  const r = await dockerEnsureRunning(anyUrl, { autoCreate: true, quiet: autolaunchQuiet });
+  if (!r.ok) {
+    const err = new Error(r.reason);
+    err.engineDown = true;
+    throw err;
+  }
+  if (!autolaunchQuiet) process.stderr.write('engine 起動したのだ (docker)\n');
 }
 
 async function fetchOrThrow(url, init) {
@@ -188,8 +294,8 @@ async function fetchOrThrow(url, init) {
   } catch (e) {
     if (!e.engineDown) throw e;
     if (!autolaunchAllowed || autolaunchTried) throw e;
-    if (process.platform !== 'darwin') throw e;
     if (process.env.ZUNDONE_NO_AUTOLAUNCH === '1') throw e;
+    if (BACKEND !== 'docker') throw e;
     autolaunchTried = true;
     await tryAutolaunch(url);
     return await fetchRaw(url, init);
@@ -256,12 +362,76 @@ async function synthesize({ text, speakerId, baseUrl, rate, pitch, volume, inton
   return Buffer.from(await sRes.arrayBuffer());
 }
 
-function playWav(path) {
+async function which(cmd) {
+  const path = process.env.PATH || '';
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const exts = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';')
+    : [''];
+  for (const dir of path.split(sep)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const full = join(dir, cmd + ext);
+      try {
+        await access(full, FS.X_OK);
+        return full;
+      } catch {}
+    }
+  }
+  return null;
+}
+
+const PLAYER_ARGS_BY_BIN = {
+  ffplay: ['-autoexit', '-nodisp', '-loglevel', 'quiet'],
+  play: ['-q'],
+};
+
+let resolvedPlayer = null;
+
+async function resolvePlayer() {
+  if (resolvedPlayer) return resolvedPlayer;
+
+  if (process.env.ZUNDONE_PLAYER) {
+    const bin = process.env.ZUNDONE_PLAYER;
+    const args = (process.env.ZUNDONE_PLAYER_ARGS || '').split(' ').filter(Boolean);
+    resolvedPlayer = { type: 'cmd', bin, args };
+    return resolvedPlayer;
+  }
+
+  if (process.platform === 'win32') {
+    resolvedPlayer = { type: 'powershell' };
+    return resolvedPlayer;
+  }
+
+  const candidates = process.platform === 'darwin'
+    ? ['afplay', 'paplay', 'play', 'ffplay']
+    : ['paplay', 'aplay', 'play', 'ffplay'];
+
+  for (const c of candidates) {
+    if (await which(c)) {
+      resolvedPlayer = { type: 'cmd', bin: c, args: PLAYER_ARGS_BY_BIN[c] || [] };
+      return resolvedPlayer;
+    }
+  }
+  throw new Error(
+    '再生コマンドが見つからないのだ。afplay/paplay/aplay/play/ffplay のどれかを入れるか、ZUNDONE_PLAYER で指定してほしいのだ'
+  );
+}
+
+async function playWav(path) {
+  const player = await resolvePlayer();
   return new Promise((resolve, reject) => {
-    const p = spawn('afplay', [path], { stdio: 'ignore' });
+    let p;
+    if (player.type === 'powershell') {
+      const escaped = path.replace(/'/g, "''");
+      const ps1 = `(New-Object Media.SoundPlayer '${escaped}').PlaySync()`;
+      p = spawn('powershell.exe', ['-NoProfile', '-Command', ps1], { stdio: 'ignore' });
+    } else {
+      p = spawn(player.bin, [...player.args, path], { stdio: 'ignore' });
+    }
     p.on('error', reject);
     p.on('exit', (code, sig) =>
-      code === 0 ? resolve() : reject(new Error(`afplay 終了コード ${code ?? sig}`)),
+      code === 0 ? resolve() : reject(new Error(`${player.bin || 'player'} 終了コード ${code ?? sig}`)),
     );
   });
 }
@@ -279,8 +449,6 @@ function parseFloatOpt(v, name) {
   if (!Number.isFinite(n)) throw new Error(`${name} は数値で指定してほしいのだ (受け取った値: ${v})`);
   return n;
 }
-
-// ---- キャッシュ ----
 
 function cacheKey({ text, speakerId, rate, pitch, volume, intonation }) {
   const payload = JSON.stringify({
@@ -353,12 +521,80 @@ function formatBytes(n) {
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
-// ---- サブコマンド処理 ----
+async function engineCommand(action) {
+  const baseUrl = DEFAULT_URL.replace(/\/+$/, '');
 
-const SUBCOMMANDS = new Set(['help', 'list', 'clear-cache', 'cache-info', 'cache-path']);
+  if (!action || action === 'status') {
+    process.stdout.write(`backend: ${BACKEND}\n`);
+
+    if (BACKEND === 'docker') {
+      const s = await dockerContainerStatus();
+      if (!s.available) {
+        process.stdout.write('docker: コマンドが見つからないのだ\n');
+      } else if (s.error) {
+        process.stdout.write(`docker: エラー (${s.error})\n`);
+      } else if (!s.exists) {
+        process.stdout.write(`docker container "${DOCKER_CONTAINER}": 未作成 (zd engine up で作成)\n`);
+      } else {
+        process.stdout.write(`docker container "${DOCKER_CONTAINER}": ${s.running ? '稼働中' : `停止中 (state=${s.state})`}\n`);
+      }
+    }
+
+    try {
+      const r = await fetch(`${baseUrl}/version`);
+      const txt = (await r.text()).trim().replace(/^"|"$/g, '');
+      process.stdout.write(`engine HTTP (${baseUrl}): OK / version=${txt || '?'}\n`);
+    } catch (e) {
+      process.stdout.write(`engine HTTP (${baseUrl}): 接続不可 (${e?.cause?.code || e.message})\n`);
+    }
+
+    const player = await resolvePlayer().catch(e => ({ error: e.message }));
+    if (player.error) {
+      process.stdout.write(`再生コマンド: 検出失敗 (${player.error})\n`);
+    } else if (player.type === 'powershell') {
+      process.stdout.write(`再生コマンド: PowerShell SoundPlayer\n`);
+    } else {
+      process.stdout.write(`再生コマンド: ${player.bin}${player.args.length ? ' ' + player.args.join(' ') : ''}\n`);
+    }
+    return;
+  }
+
+  if (BACKEND !== 'docker') {
+    throw new Error(`engine ${action} は backend=docker のときだけ使えるのだ (現在: ${BACKEND})`);
+  }
+
+  if (action === 'up') {
+    const r = await dockerEnsureRunning(baseUrl, { autoCreate: true, quiet: false });
+    if (!r.ok) throw new Error(r.reason);
+    process.stdout.write('engine 接続確認OKなのだ\n');
+    return;
+  }
+
+  if (action === 'down') {
+    const s = await dockerContainerStatus();
+    if (!s.available) throw new Error('docker コマンドが見つからないのだ');
+    if (!s.exists) { process.stdout.write('container は無いのだ\n'); return; }
+    if (!s.running) { process.stdout.write('既に停止しているのだ\n'); return; }
+    const r = await spawnCapture('docker', ['stop', DOCKER_CONTAINER]);
+    if (!r.ok) throw new Error(`docker stop 失敗: ${r.stderr.trim()}`);
+    process.stdout.write('container 停止したのだ\n');
+    return;
+  }
+
+  if (action === 'logs') {
+    const r = await spawnCapture('docker', ['logs', '--tail', '100', DOCKER_CONTAINER]);
+    if (r.stdout) process.stdout.write(r.stdout);
+    if (r.stderr) process.stderr.write(r.stderr);
+    if (!r.ok) process.exit(1);
+    return;
+  }
+
+  throw new Error(`engine: 不明なアクション "${action}". status/up/down/logs から選んでほしいのだ`);
+}
+
+const SUBCOMMANDS = new Set(['help', 'list', 'engine', 'clear-cache', 'cache-info', 'cache-path']);
 
 async function main() {
-  // 最初のpositionalがサブコマンドなら専用処理
   const firstArg = process.argv[2];
   if (firstArg && SUBCOMMANDS.has(firstArg)) {
     switch (firstArg) {
@@ -370,6 +606,9 @@ async function main() {
         await listSpeakers(url);
         return;
       }
+      case 'engine':
+        await engineCommand(process.argv[3]);
+        return;
       case 'clear-cache': {
         const { removed, bytes } = await clearCache();
         process.stdout.write(`削除したのだ: ${removed}ファイル / ${formatBytes(bytes)}\n`);
@@ -510,7 +749,6 @@ async function main() {
     }
 
     if (!playPath) {
-      // キャッシュ無効かつ --output も無い場合は一時ファイルに書く
       playPath = join(tmpdir(), `zundone-${randomBytes(6).toString('hex')}.wav`);
       await writeFile(playPath, wav);
       tempPathToCleanup = playPath;
@@ -527,9 +765,14 @@ async function main() {
 main().catch(err => {
   if (err?.engineDown) {
     process.stderr.write(`エラー: ${err.message}\n`);
-    process.stderr.write(`VOICEVOX engine を起動してほしいのだ:\n`);
-    process.stderr.write(`  docker start voicevox    # 既に作成済みのコンテナを起動\n`);
-    process.stderr.write(`  docker run -d --restart unless-stopped --name voicevox -p 50021:50021 voicevox/voicevox_engine:cpu-latest\n`);
+    if (BACKEND === 'docker') {
+      process.stderr.write(`engine 起動方法:\n`);
+      process.stderr.write(`  zd engine up                 # docker container 自動作成/起動\n`);
+      process.stderr.write(`  zd engine status             # 状態確認\n`);
+    } else {
+      process.stderr.write(`backend=http なので autolaunch しないのだ。\n`);
+      process.stderr.write(`engine の URL を確認するか、ZUNDONE_BACKEND=docker で docker 自動起動を有効化してほしいのだ\n`);
+    }
   } else {
     process.stderr.write(`エラー: ${err?.message || err}\n`);
   }

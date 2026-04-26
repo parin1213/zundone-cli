@@ -1,7 +1,7 @@
 {
   "name": "zundone-cli",
   "version": "0.1.0",
-  "description": "VOICEVOXずんだもんで喋るsay互換風CLI",
+  "description": "VOICEVOX speaking CLI with HTTP and Docker backends",
   "type": "module",
   "bin": {
     "zundone": "./zundone.mjs",
