@@ -2,6 +2,22 @@
   "name": "zundone-cli",
   "version": "0.1.0",
   "description": "VOICEVOX speaking CLI with HTTP and Docker backends",
+  "keywords": [
+    "cli",
+    "voicevox",
+    "tts",
+    "text-to-speech",
+    "speech",
+    "docker"
+  ],
+  "homepage": "https://github.com/parin1213/zundone-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/parin1213/zundone-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/parin1213/zundone-cli/issues"
+  },
   "type": "module",
   "bin": {
     "zundone": "./dist/cli.js",
