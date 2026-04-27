@@ -18,16 +18,25 @@ The CLI is no longer tied to a macOS app install. It talks to a VOICEVOX HTTP AP
   - a reachable VOICEVOX engine URL
   - Docker, if you want `zundone` to manage the engine for you
 
-## Development
+## Install
 
 ```bash
-pnpm dev -- "done"
-pnpm build
-pnpm test
-pnpm typecheck
+npm i -g zundone-cli                  # npm
+pnpm add -g zundone-cli               # pnpm
+mise use -g npm:zundone-cli@latest    # mise
 ```
 
-The generated executable entrypoint is `dist/cli.js`.
+You get two binaries: `zundone` and `zd` (short alias).
+
+## From source
+
+```bash
+pnpm install
+pnpm dev -- "done"   # tsx-driven src/cli.ts
+pnpm build           # tsup → dist/cli.js
+pnpm test            # vitest
+pnpm typecheck
+```
 
 ## Stack
 
@@ -144,3 +153,7 @@ Override or disable with:
 
 - `dist/` is generated; edit `src/` and rebuild instead of patching build output directly
 - `engine up` expects the configured URL port and Docker published port to match
+
+## License
+
+MIT
