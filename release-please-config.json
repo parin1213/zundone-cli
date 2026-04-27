@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "60eade26f5654221351141f131bb7189e08d5794",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "zundone-cli",
+      "include-v-in-tag": true
+    }
+  }
+}
