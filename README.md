@@ -20,16 +20,25 @@ English README: [README.en.md](./README.en.md)
   - 到達可能な VOICEVOX engine URL
   - `zundone engine up` を使うなら Docker
 
-## 開発時の使い方
+## インストール
 
 ```bash
-pnpm dev -- "done"
-pnpm build
-pnpm test
-pnpm typecheck
+npm i -g zundone-cli                  # npm
+pnpm add -g zundone-cli               # pnpm
+mise use -g npm:zundone-cli@latest    # mise
 ```
 
-生成されるエントリポイントは `dist/cli.js` です。
+`zundone` と `zd` の 2 つのバイナリが入ります (`zd` は短いエイリアス)。
+
+## ソースからの開発
+
+```bash
+pnpm install
+pnpm dev -- "done"   # tsx 経由で src/cli.ts を実行
+pnpm build           # tsup → dist/cli.js
+pnpm test            # vitest
+pnpm typecheck
+```
 
 ## 技術構成
 
@@ -142,3 +151,7 @@ zundone engine logs
 
 - `dist/` は生成物です。編集は `src/` 側で行います
 - `engine up` は Docker 公開ポートと `VOICEVOX_URL` のポート一致を前提にしています
+
+## License
+
+MIT
