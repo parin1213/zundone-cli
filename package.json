@@ -36,7 +36,7 @@
     "prepublishOnly": "pnpm build"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.22.2"
   },
   "packageManager": "pnpm@10.33.2",
   "pnpm": {
