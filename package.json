@@ -1,6 +1,6 @@
 {
   "name": "zundone-cli",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "VOICEVOX speaking CLI with HTTP and Docker backends",
   "keywords": [
     "cli",
