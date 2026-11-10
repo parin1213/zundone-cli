@@ -15,7 +15,7 @@ English README: [README.en.md](./README.en.md)
 
 ## 必要なもの
 
-- Node.js 20+
+- Node.js 22.22.2+
 - 以下のどちらか
   - 到達可能な VOICEVOX engine URL
   - `zundone engine up` を使うなら Docker
