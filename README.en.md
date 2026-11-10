@@ -13,7 +13,7 @@ The CLI is no longer tied to a macOS app install. It talks to a VOICEVOX HTTP AP
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22.22.2+
 - One of:
   - a reachable VOICEVOX engine URL
   - Docker, if you want `zundone` to manage the engine for you
